@@ -130,7 +130,11 @@ func parseConfig() bool {
 	if !checkConfig("smtp", smtpKeys) {
 		return false
 	}
-	if !checkConfig("general", []string{"database", "secret", "authheader"}) {
+	if !checkConfig("general", []string{
+		"database", "secret", "authheader", "sslport",
+		"httpport", "sslcert", "sslkey", "httpenabled",
+		"sslenabled",
+	}) {
 		return false
 	}
 
@@ -179,8 +183,35 @@ func main() {
 	http.HandleFunc("/notify", authWrapper(notifyHandler))
 	http.HandleFunc("/puturl", authWrapper(saveHandler))
 	http.HandleFunc("/geturl", retrieveHandler)
-	err := http.ListenAndServeTLS(":1443", "./cert.pem", "./private.key", nil)
-	if err != nil {
-		fmt.Printf("could not start server: %s\n", err)
+
+	if cfg.Section("general").Key("httpenabled").String() == "true" {
+		go func() {
+			err := http.ListenAndServe(
+				":"+cfg.Section("general").Key("httpport").String(),
+				nil,
+			)
+			if err != nil {
+				fmt.Printf("could not start http server: %v\n", err)
+				os.Exit(1)
+			}
+		}()
 	}
+
+	if cfg.Section("general").Key("sslenabled").String() == "true" {
+		go func() {
+			err := http.ListenAndServeTLS(
+				":"+cfg.Section("general").Key("sslport").String(),
+				cfg.Section("general").Key("sslcert").String(),
+				cfg.Section("general").Key("sslkey").String(),
+				nil,
+			)
+			if err != nil {
+				fmt.Printf("could not start ssl server: %s\n", err)
+				os.Exit(1)
+			}
+		}()
+	}
+
+	// todo: add proper shutdown logic
+	select {}
 }
